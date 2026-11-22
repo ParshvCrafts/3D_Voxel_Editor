@@ -2,14 +2,20 @@
 
 ## Dependencies
 
+Pinned in `requirements.txt` (tested on Python 3.11.9):
+
 ```
-mediapipe >= 0.10.0    # Hand tracking
-opencv-python >= 4.8.0 # Webcam, image processing
-moderngl >= 5.8.0      # OpenGL 3.3 rendering
-pygame >= 2.5.0        # Window, input, event loop
-pyrr >= 0.10.3         # Matrix/vector math
-numpy >= 1.24.0        # Numerical operations
+mediapipe==0.10.8                # Hand tracking
+opencv-contrib-python==4.11.0.86 # Webcam, image processing (mediapipe's own OpenCV dep)
+moderngl==5.12.0                 # OpenGL 3.3 rendering
+pygame==2.6.1                    # Window, input, event loop
+pyrr==0.10.3                     # Matrix/vector math
+numpy==1.26.4                    # Numerical operations
 ```
+
+Never add `opencv-python` / `opencv-python-headless` alongside: they overwrite the same `cv2` module.
+
+README images: `python tools/capture_readme_assets.py` renders them through the real app with no webcam.
 
 ## Running
 
@@ -23,7 +29,7 @@ python main.py
 
 - Webcam (1280x720 requested, falls back to 640x480)
 - OpenGL 3.3+ support
-- Python 3.8+
+- Python 3.11 (mediapipe 0.10.8 ships wheels for 3.8–3.11 only)
 
 ## Key Config Values (`config.py`)
 

@@ -1,272 +1,125 @@
-# JARVIS-Style 3D Voxel Editor
+# 3D Voxel Editor
 
-A hand gesture controlled 3D voxel editor built with Python, MediaPipe, OpenCV, Pygame, and ModernGL. The project combines real-time hand tracking, a priority-based gesture recognition system, a sparse voxel engine, and a holographic AR-inspired renderer to create an interactive desktop editing experience reminiscent of cinematic sci-fi interfaces.
+Build voxel models in mid-air with your hands. A webcam and MediaPipe track both hands; pinch to place blocks, point to erase, make a fist to grab the model, and open both palms to spin it. Rendering is real-time OpenGL through ModernGL, with bloom and a holographic look.
 
-## Overview
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
 
-This project turns a webcam into the primary input device for building and editing voxel structures. Instead of relying on a mouse for the core interaction loop, users place, delete, grab, rotate, scatter, restore, recolor, save, and export voxel models through single-hand and two-hand gestures.
+<p align="center">
+  <img src="docs/assets/demo-render.gif" width="450" alt="A voxel rocket spins one full turn, explodes into scattered cubes, then flies back into shape">
+</p>
+<p align="center"><sub>Rendered by the app itself: the voxel engine's rotate, scatter and restore actions on a scripted scene, captured with no webcam attached (<a href="tools/capture_readme_assets.py">script</a>). In normal use each step is triggered by a hand gesture.</sub></p>
 
-The application is organized as a modular real-time system:
+## Why this exists
 
-- `main.py` runs the application loop and routes gesture events into editor actions.
-- `hand_tracker.py` uses MediaPipe to detect hands and extract landmark-derived hand state.
-- `gestures.py` interprets those states with a hold-timer and priority-based gesture state machine.
-- `voxel_engine.py` stores voxels, applies transforms, handles history, and manages physics-style effects.
-- `renderer.py` draws the 3D scene with ModernGL, bloom, wireframes, and AR-friendly transparency.
-- `ui_renderer.py` renders the HUD, webcam preview, cursors, overlays, particles, and gesture feedback.
+Most hand-tracking demos stop at drawing a skeleton over the video. This project goes one step further and uses the hands as the only input device for a small 3D editor, which raises problems a demo never hits: two hands making different gestures at once, gestures that look alike for a few frames, holds that must not fire by accident, and a cursor that has to stay steady enough to hit a one-unit grid cell.
 
-## Highlights
+The answer here is a priority-ordered gesture state machine with hold timers, One Euro filtering on fingertip and palm positions, and an engine that keeps edits cheap (sparse storage, whole-model transforms as a single matrix).
 
-- Real-time webcam-driven hand tracking with up to two hands
-- Gesture-based voxel placement, deletion, grab/move, rotation, scatter, restore, and reset
-- Sparse dictionary-backed voxel storage for efficient editing
-- Group transform workflow for moving and rotating the entire structure without rebuilding per-voxel data every frame
-- Holographic visual style with bloom, wireframes, cursors, particles, and HUD overlays
-- AR mode with webcam background composited behind the 3D scene
-- Undo/redo, save/load to JSON, and export to OBJ
-- Debug overlay and clearly documented gesture timing, priorities, and failure modes
+## What you can do
 
-## Core Interaction Model
+<p align="center">
+  <img src="docs/assets/hero-strip.png" alt="Three renders of the same 76-voxel rocket: front view, rotated about two axes, and mid-scatter">
+</p>
+<p align="center"><sub>Front view, two-axis rotation, and scatter, rendered from the same scene by <code>tools/capture_readme_assets.py</code>.</sub></p>
 
-The current gesture system is intentionally strict about gesture priority to avoid conflicts between actions. The main production mapping is:
+| Gesture | Action |
+| --- | --- |
+| Left pinch (hold 0.5 s) | Place voxels; keep holding and move to build continuously |
+| Right pinch + left index point | Paint over voxels to mark them; release the pinch to delete them all |
+| Right fist | Grab and move the whole model |
+| Both palms open (hold 1 s) | Rotate: spread hands to spin, raise one hand to tilt |
+| Both fists (1 s) | Reset position and rotation |
+| Left thumb down / up | Scatter the model with physics / pull it back together |
+| Left victory sign | Cycle the color palette |
+| Right victory | Start disco colors; again to restore the original colors |
+| Right open palm (during disco) | Freeze the current disco colors |
+| Right thumb up alone (5 s) | Clear everything (long hold so it can't fire by accident) |
 
-| Priority | Gesture | Action |
-| --- | --- | --- |
-| 1 | Both fists | Reset transform |
-| 2 | Both palms | Enter continuous rotation |
-| 2.5 | Right thumb up only | Full reset after 5 second hold |
-| 3 | Right pinch + left point | Delete voxels under the left cursor |
-| 4 | Right fist | Grab and move the whole structure |
-| 5 | Left pinch only | Place voxels continuously |
-| 6 | Left thumb down | Scatter voxels |
-| 7 | Left thumb up | Restore voxels |
+The keyboard covers the rest: `S` save to `voxel_scene.json`, `L` load, `E` export `voxel_export.obj` with an `.mtl` of colors, `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo, `A` toggle AR mode (webcam behind the scene), `H` help, `D` debug overlay. Full list in [prd.md](prd.md#keyboard-controls).
 
-Additional edge-triggered gestures:
+## How it works
 
-- Left victory sign cycles the active color palette
-- Right victory starts disco mode
-- Right open palm stops disco mode
+```mermaid
+flowchart LR
+    A[Webcam frame<br/>OpenCV] --> B[MediaPipe Hands<br/>21 landmarks x 2]
+    B --> C[hand_tracker.py<br/>fingers up, pinch,<br/>One Euro filter]
+    C --> D[gestures.py<br/>priority state machine<br/>+ hold timers]
+    D --> E[main.py<br/>gesture to action]
+    E --> F[voxel_engine.py<br/>sparse grid, undo,<br/>physics]
+    F --> G[renderer.py<br/>instanced cubes,<br/>bloom]
+    B -. mirrored frame .-> H[ui_renderer.py<br/>webcam, HUD, cursors]
+    G --> I[Pygame window]
+    H --> I
+```
 
-Keyboard controls remain available for toggles, debugging, scene management, and fallback control paths.
+Each frame: OpenCV reads the camera, MediaPipe runs on the **unmirrored** frame (so left and right hands are labelled correctly), and only then is the frame flipped for display. `hand_tracker.py` turns landmarks into finger states and smoothed fingertip positions, `gestures.py` decides what the hands mean, `main.py` applies it to the engine, and two renderers draw the scene and the overlay.
 
-## Architecture
+### Design decisions worth reading
 
-The runtime follows a clear data flow:
+- **Gesture priority instead of a classifier.** Gestures are checked in a fixed order (both fists, both palms, full reset, delete, grab, place, scatter/restore), and the first match wins. (Color and disco gestures are edge-triggered and checked separately.) Two-hand gestures sit above one-hand ones, so "right pinch + left point" is never mistaken for a plain left action. The whole table, with timers and detection rules, is in [prd.md](prd.md).
+- **Hold timers with a visible loading ring.** Every gesture that edits or moves the model needs a short hold (0.5 to 5 s) and draws progress around the hand, so a hand passing through a fist or a pinch on its way to another pose doesn't fire anything.
+- **Delete collects, then commits.** While the delete gesture is held, voxels under the left fingertip go into a set; nothing is removed until the right pinch releases, which then deletes the whole batch. An earlier version fired an event per voxel and the 0.3 s action cooldown blocked the release event, leaving delete stuck on. The gesture recognizer now holds a direct reference to the engine to avoid that.
+- **Sparse storage.** Voxels live in `Dict[Tuple[int,int,int], Voxel]`. Lookup, placement and deletion are O(1), and empty space costs nothing. The cap is 10,000 voxels (`config.py`).
+- **Move and rotate the model with one matrix.** Grab and rotate change a single model matrix in the shader, not the voxel data. The grab offset moves in whole-cell steps and is committed to the voxels when the grab ends, so later edits still land on integer cells; rotation stays in the matrix.
+- **Instanced rendering.** The renderer packs 10 floats per voxel (position, color, rotation, selected flag) into an instance buffer and draws all cubes with one instanced call, plus one more for their wireframe edges. The buffer is rebuilt in Python every frame, which is fine at this scale but is the first thing to optimize for bigger scenes. A bloom post-process (bright-pass extract, blur, combine) adds the glow.
+- **Placement is 2D on purpose.** Hand x/y map onto the z = 0 plane, so every placed block lands on a predictable cell and the delete cursor matches what you see. You get a 3D view of the result by rotating it with both palms.
 
-1. OpenCV captures a raw webcam frame.
-2. MediaPipe processes the unmirrored frame for correct handedness.
-3. The frame is mirrored for display after hand processing.
-4. `hand_tracker.py` produces structured hand data.
-5. `gestures.py` evaluates that data through a state machine and emits gesture actions when appropriate.
-6. `main.py` applies those actions to the voxel engine.
-7. `renderer.py` renders the voxel scene and post-processing.
-8. `ui_renderer.py` composites the webcam preview, HUD, cursors, loading circles, debug data, and effects.
+More detail: [architecture.md](architecture.md) (coordinate systems, render pipeline) and [memory.md](memory.md) (known gotchas and debugging notes).
 
-Key implementation decisions:
+## Quick start
 
-- Voxels are stored sparsely as integer grid keys: `Dict[Tuple[int, int, int], Voxel]`.
-- Placement uses a YouTube-style 2D mapping model; the working interaction plane keeps `z = 0.0`.
-- Group grab and rotation operate through a model matrix instead of rewriting voxel coordinates every frame.
-- The delete system intentionally has a direct reference from the gesture recognizer to the voxel engine to avoid cooldown deadlocks during continuous delete painting.
-- AR rendering preserves alpha so the webcam can show through the scene correctly.
-
-For deeper technical details, see:
-
-- [architecture.md](./architecture.md)
-- [prd.md](./prd.md)
-- [memory.md](./memory.md)
-- [progress.md](./progress.md)
-- [techstack.md](./techstack.md)
-- [CLAUDE.md](./CLAUDE.md)
-
-## Tech Stack
-
-- Python 3.8+
-- MediaPipe for hand tracking
-- OpenCV for webcam capture and image processing
-- Pygame for the window, input loop, and OpenGL context setup
-- ModernGL for rendering
-- Pyrr for matrix and vector math
-- NumPy for numerical operations
-
-## Requirements
-
-Hardware and platform expectations:
-
-- A working webcam
-- OpenGL 3.3+ support
-- A desktop environment capable of opening a hardware-accelerated Pygame window
-
-Recommended runtime assumptions from the current configuration:
-
-- Window: `1280 x 720`
-- Target framerate: `60 FPS`
-- Webcam request: `1280 x 720` with fallback behavior depending on hardware
-- Maximum voxel count: `10,000`
-
-## Installation
+You need Python 3.11, a webcam, and a GPU driver with OpenGL 3.3.
 
 ```bash
 git clone https://github.com/ParshvCrafts/3D_Voxel_Editor.git
 cd 3D_Voxel_Editor
 python -m venv .venv
-```
-
-Activate the virtual environment:
-
-```bash
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-# macOS / Linux
-source .venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Running the App
-
-```bash
 python main.py
 ```
 
-On startup, the application initializes:
+Keep both hands in frame. Press `H` for the help overlay and `D` to see what the gesture recognizer thinks your hands are doing. Without a camera, the app starts anyway on a dark background (keyboard and saved scenes still work).
 
-- the OpenGL context
-- webcam capture
-- hand tracking
-- gesture recognition
-- voxel engine
-- 3D renderer
-- UI renderer
-
-If the webcam cannot be opened, the app attempts to continue in a degraded mode instead of crashing immediately.
-
-## Controls
-
-### Gesture Controls
-
-| Gesture | Action |
-| --- | --- |
-| Left pinch | Place voxels |
-| Right pinch + left index point | Delete voxels in batch on release |
-| Right fist | Grab and move the structure |
-| Both palms | Rotate the structure on X and Y axes |
-| Both fists | Reset transform |
-| Right thumb up only | Full reset after hold |
-| Left thumb down | Scatter |
-| Left thumb up | Restore |
-| Left victory | Cycle colors |
-| Right victory | Start disco mode |
-| Right palm | Stop disco mode |
-
-### Keyboard Controls
-
-| Key | Action |
-| --- | --- |
-| `ESC` | Quit |
-| `H` | Toggle help overlay |
-| `D` | Toggle debug overlay |
-| `W` | Toggle webcam preview |
-| `P` | Toggle particles |
-| `A` | Toggle AR mode |
-| `M` | Toggle symmetry |
-| `Shift + X/Y/Z` | Set symmetry axis |
-| `S` | Save scene to JSON |
-| `L` | Load scene |
-| `E` | Export to OBJ |
-| `C` | Clear all voxels |
-| `R` | Reset camera |
-| `1-8` | Quick color select |
-| `Ctrl + Z` | Undo |
-| `Ctrl + Shift + Z` | Redo |
-| `F1-F5` | Switch editor mode |
-| `G` | Gravity burst / restore |
-| `T` | Smooth restore |
-| `O` | Cycle colors |
-| `I` | Toggle disco mode |
-
-## Project Structure
-
-```text
-3D_Voxel_Editor/
-|-- main.py
-|-- config.py
-|-- hand_tracker.py
-|-- gestures.py
-|-- voxel_engine.py
-|-- renderer.py
-|-- ui_renderer.py
-|-- utils.py
-|-- requirements.txt
-|-- shaders/
-|-- assets/
-|-- tests/
-|-- architecture.md
-|-- memory.md
-|-- prd.md
-|-- progress.md
-|-- techstack.md
-`-- CLAUDE.md
-```
-
-## Testing
-
-The repository currently includes unit tests focused on the voxel engine, covering:
-
-- clear/reset history behavior
-- grab/move snapping with undo/redo
-- save/load scene round-trips
-- disco color freeze and authored-color restoration
-- invalid scene loading failures
-
-Run tests with:
+Run the unit tests (no camera or GPU needed):
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-## Current Status
+Regenerate the images in this README (opens a window for a few seconds, no camera needed):
 
-According to the project history documents, the codebase is currently at Phase 15 with all core editing features implemented. Verified working capabilities include:
+```bash
+python tools/capture_readme_assets.py
+```
 
-- continuous placement
-- continuous delete collection with batch removal
-- grab/move of the full structure
-- hologram-style rotation
-- transform reset
-- full reset with right-thumb-up safety gating
-- color cycling
-- AR mode
-- save/load/export
-- undo/redo
+## Status
 
-Items still worth further validation include some advanced or secondary flows such as grab preview visibility, disco stop/start ergonomics, scatter/restore edge behavior, symmetry mode, and multi-select box selection.
+Developed on Windows 11 with Python 3.11.9 and an OpenGL 3.3 core context.
 
-## Known Technical Notes
+**Verified working** (hand-tested by the author, see [progress.md](progress.md)): place, delete, grab, two-hand rotation, transform reset, full reset, color cycling, AR mode, save/load, OBJ export, undo/redo.
+**Covered by unit tests** ([tests/test_voxel_engine.py](tests/test_voxel_engine.py), 5 tests): clear and reset history, grab snapping with undo/redo, save/load round trip, disco color restore, rejection of malformed scene files.
+**Implemented but not re-verified:** disco mode gestures, scatter/restore by thumb gesture (the engine actions themselves are shown in the GIF above), symmetry mode, box selection.
 
-- The webcam frame is mirrored after MediaPipe processing, not before.
-- The working placement model currently assumes `z = 0.0`.
-- Grid keys must remain integer tuples for voxel lookup consistency.
-- Continuous gesture handlers should avoid emitting repeated events during hold states because action cooldown can block state transitions.
-- AR mode intentionally skips grid rendering to avoid flickering issues.
+Not tested on macOS or Linux.
 
-These details are documented more fully in [memory.md](./memory.md) and [architecture.md](./architecture.md).
+## Project layout
 
-## Roadmap Opportunities
-
-The implemented foundation is strong enough to support future work such as:
-
-- deeper 3D placement beyond the current interaction plane
-- stronger test coverage for gesture recognition and renderer behavior
-- improved onboarding and calibration flows for new users
-- richer selection and editing tools
-- polished export and asset pipeline features
+```text
+main.py             app loop, keyboard, gesture -> action routing
+hand_tracker.py     MediaPipe wrapper, finger states, One Euro smoothing
+gestures.py         priority-ordered gesture state machine
+voxel_engine.py     sparse voxel grid, transforms, physics, undo/redo, save/load/OBJ
+renderer.py         ModernGL scene: instanced voxels, grid, wireframes, bloom
+ui_renderer.py      webcam panel, HUD, cursors, particles
+utils.py            filters, ray casting, math helpers
+config.py           every tunable value (timers, thresholds, colors, camera)
+shaders/            GLSL for voxels, grid, bloom, HUD, particles
+tests/              voxel engine unit tests
+tools/              README asset capture script
+```
 
 ## License
 
-No license file is currently present in the repository. If you plan to open-source or distribute the project broadly, adding an explicit license is recommended.
+[MIT](LICENSE) © Parshv Patel

@@ -26,8 +26,12 @@ Hand gesture controlled 3D voxel editor with holographic visual effects inspired
 ├── utils.py             # Math helpers, filters, ray casting
 ├── requirements.txt     # Python dependencies
 ├── shaders/             # GLSL shaders (voxel, wireframe, grid, bloom, etc.)
-└── assets/              # Assets directory
+├── tests/               # voxel engine unit tests (python -m unittest discover -s tests)
+├── tools/               # capture_readme_assets.py: renders README images, no webcam
+└── docs/assets/         # README GIF/PNGs + social-preview.png (regenerate with the tool above)
 ```
+
+README follows the global `github-showcase` skill; every claim in it is traced to code.
 
 ## Key Architectural Decisions
 
