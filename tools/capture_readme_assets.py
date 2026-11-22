@@ -51,8 +51,7 @@ ROCKET = [
     "P..OYO..P",
     "....O....",
 ]
-# Colors from the app's own palette. Only one WHITE voxel: white is above the
-# bloom threshold, so a whole white hull washes the frame out.
+# Colors from the app's own palette; one WHITE voxel as a lit window.
 _c = CONFIG.colors
 PALETTE = {
     "R": _c.PINK, "W": _c.CYAN, "B": _c.BLUE, "C": _c.WHITE,

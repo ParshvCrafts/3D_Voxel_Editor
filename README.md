@@ -82,7 +82,7 @@ python main.py
 
 Keep both hands in frame. Press `H` for the help overlay and `D` to see what the gesture recognizer thinks your hands are doing. Without a camera, the app starts anyway on a dark background (keyboard and saved scenes still work).
 
-Run the unit tests (no camera or GPU needed):
+Run the unit tests (no camera needed; the bloom test uses an offscreen OpenGL context and skips itself if none is available):
 
 ```bash
 python -m unittest discover -s tests
@@ -99,7 +99,7 @@ python tools/capture_readme_assets.py
 Developed on Windows 11 with Python 3.11.9 and an OpenGL 3.3 core context.
 
 **Verified working** (hand-tested by the author, see [progress.md](progress.md)): place, delete, grab, two-hand rotation, transform reset, full reset, color cycling, AR mode, save/load, OBJ export, undo/redo.
-**Covered by unit tests** ([tests/test_voxel_engine.py](tests/test_voxel_engine.py), 5 tests): clear and reset history, grab snapping with undo/redo, save/load round trip, disco color restore, rejection of malformed scene files.
+**Covered by unit tests** (6 tests in [tests/](tests/)): clear and reset history, grab snapping with undo/redo, save/load round trip, disco color restore, rejection of malformed scene files, and a renderer regression test that a moving bright voxel leaves no bloom trail.
 **Implemented but not re-verified:** disco mode gestures, scatter/restore by thumb gesture (the engine actions themselves are shown in the GIF above), symmetry mode, box selection.
 
 Not tested on macOS or Linux.
@@ -116,7 +116,7 @@ ui_renderer.py      webcam panel, HUD, cursors, particles
 utils.py            filters, ray casting, math helpers
 config.py           every tunable value (timers, thresholds, colors, camera)
 shaders/            GLSL for voxels, grid, bloom, HUD, particles
-tests/              voxel engine unit tests
+tests/              voxel engine + bloom regression tests
 tools/              README asset capture script
 ```
 

@@ -556,6 +556,11 @@ class Renderer:
     def _render_bloom(self):
         """Apply bloom post-processing."""
         self.ctx.disable(moderngl.DEPTH_TEST)
+        # Each pass must fully overwrite its target. The scene pass leaves alpha
+        # blending on, and under blending the extract shader's vec4(0) output for
+        # dark pixels is a no-op, so bright pixels from earlier frames never left
+        # the bloom buffers: moving white/gold voxels drew a growing glow trail.
+        self.ctx.disable(moderngl.BLEND)
         render_cfg = CONFIG.render
 
         # Extract bright pixels
@@ -585,6 +590,9 @@ class Renderer:
             self.blur_program['u_direction'].value = (0.0, 1.0)
             self.blur_program['u_resolution'].value = (self.width // 2, self.height // 2)
             self.blur_vao.render(moderngl.TRIANGLES)
+
+        # Restore the scene pass's state so the final composite is unchanged.
+        self.ctx.enable(moderngl.BLEND)
 
     def _render_final_composite(self, ar_mode: bool = False):
         """Render final composite to screen."""

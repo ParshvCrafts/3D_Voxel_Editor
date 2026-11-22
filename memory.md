@@ -97,6 +97,11 @@ Add null check: `if hand is None: return None` before any `.fingers_up`, `.is_pi
 - Bloom combine must early-out on transparent pixels
 - Preview must render in same pass as voxels (not separate UI pass)
 
+### "Glow trail follows a moving white/gold voxel and keeps growing" (fixed 2026-11-22)
+Post-process passes (bloom extract, blur) must run with `BLEND` disabled. With blending on, the extract
+shader's `vec4(0)` for dark pixels is a no-op, so bloom buffers keep every bright pixel ever drawn.
+`_render_bloom` disables blend, then re-enables it for the composite. Guarded by `tests/test_bloom.py`.
+
 ## Gesture Hold Times (config.py)
 
 | Gesture | Hold Time | Config Key |
